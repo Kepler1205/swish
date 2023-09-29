@@ -245,10 +245,10 @@ pub fn parse_input(input: &str) -> Option<String>
     use crate::builtin::utils;
     // detect opterators
     for t in &tokens {
-        if t.kind == TokenType::Command {
-            if utils::is_builtin_function(t.body.as_str()) {
-
-            }
+        if t.kind == TokenType::Command
+        && utils::is_builtin_function(t.body.as_str()) 
+        && utils::is_builtin_operator(t.body.as_str()) {
+            //utils::handle_builtin(&tokens);
         }
     }
 
