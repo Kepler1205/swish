@@ -34,14 +34,11 @@ fn main()
             .read_line(&mut input)
             .expect("Failed to read user input");
 
-        // extra space is needed for parser
-        // to parse the last argument
+        // remove trailing newline
         if input.ends_with('\n') {
             input.pop();
         }
-        // if !input.ends_with(" ") {
-        //     input.push(' ');
-        // }
+
         parser::parse_input(&input);
     }
 }
