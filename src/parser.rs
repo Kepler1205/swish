@@ -1,20 +1,6 @@
-#[derive(Clone, PartialEq)]
-enum TokenType {
-    Command,    // for built-in or system commands
-    Subshell,   // (), for command substitution
-    Quote,      // "", '', for quoted arguments
-    Block       // {}. for conditional/looped code exectution
-}
+use crate::utils::{Token, TokenType};
 
-#[derive(Clone)]
-struct Token {
-    body: String,
-    kind: TokenType
-}
-
-
-fn print_tokens(input: &Vec<Token>)
-{
+fn print_tokens(input: &Vec<Token>) {
     println!("Tokens:");
     for t in input {
         match t.kind {
@@ -27,11 +13,8 @@ fn print_tokens(input: &Vec<Token>)
     }
 }
 
-fn tokenize(input: &str) -> Option<Vec<Token>>
-{
-    if input.is_empty() {
-        return None;
-    }
+fn tokenize(input: &str) -> Option<Vec<Token>> {
+    if input.is_empty() {return None}
 
     println!("Input string: '{}'", input);
 
@@ -172,31 +155,44 @@ struct PipeOpts {
     pipe_stderr: bool
 }
 
-fn execute_external(argv: Vec<String>, p_opts: Option<PipeOpts>) -> Result<(), std::io::Error>
-{
-    use std::process::{Command, Stdio};
+impl Default for PipeOpts {
+    fn default () -> Self {
+        PipeOpts { pipe_stdout: false, pipe_stderr: false }
+    }
+}
+
+enum ExecutionError {
+    MissingArguments,
+    SpawnError,
+    Unknown,
+}
+
+impl From<std::io::Error> for ExecutionError {
+    fn from(_: std::io::Error) -> Self { ExecutionError::Unknown }
+}
+
+
+fn execute_external(tokens: &Vec<Token>, p_opts: PipeOpts) -> Result<(), ExecutionError> {
+    use std::process::{ Command, Stdio };
+
+    let argv: Vec<String> = tokens
+        .iter()
+        .map(|t| t.body.clone())
+        .collect();
 
     if let Some((first, args)) = argv.split_first() {
 
         let mut cmd = Command::new(first);
         cmd.args(args);
 
-        match p_opts {
-            Some(p) => {
-                if p.pipe_stdout {
-                    cmd.stdout(Stdio::piped());
-                } else if p.pipe_stderr {
-                    cmd.stderr(Stdio::piped());
-                } else {
-                    cmd.stdout(Stdio::inherit());
-                    cmd.stderr(Stdio::inherit());
-                }
-            }
-            None => {
-                cmd.stdout(Stdio::inherit());
-                cmd.stderr(Stdio::inherit());
-            }
-        };
+        if p_opts.pipe_stdout {
+            cmd.stdout(Stdio::piped());
+        } else if p_opts.pipe_stderr {
+            cmd.stderr(Stdio::piped());
+        } else {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+        }
 
         cmd.stdin(Stdio::inherit());
 
@@ -205,16 +201,14 @@ fn execute_external(argv: Vec<String>, p_opts: Option<PipeOpts>) -> Result<(), s
                 child.wait()?;
                 Ok(())
             }
-            Err(e) => Err(e)
+            Err(e) => Err(ExecutionError::from(e))
         }
     } else {
-        use std::io::{Error, ErrorKind};
-        Err(Error::new(ErrorKind::InvalidInput, "No arguments provided"))
+        Err(ExecutionError::MissingArguments)
     }
 }
 
-pub fn parse_input(input: &str) -> Option<String>
-{
+pub fn parse_input(input: &str) -> Option<String> {
     let mut tokens = tokenize(input).unwrap_or(vec![]);
 
     // debug
@@ -237,24 +231,18 @@ pub fn parse_input(input: &str) -> Option<String>
 
     if tokens.is_empty() {return None}
 
-    let tokens_strings: Vec<String> = tokens
-        .iter()
-        .map(|t| t.body.clone())
-        .collect();
 
-    use crate::builtin::utils;
-    // detect opterators
-    for t in &tokens {
-        if t.kind == TokenType::Command
-        && utils::is_builtin_function(t.body.as_str()) 
-        && utils::is_builtin_operator(t.body.as_str()) {
-            //utils::handle_builtin(&tokens);
+    let is_builtin = crate::builtin::handle_builtin(&tokens);
+
+    return match is_builtin {
+        Some(s) => Some(s),
+        None => {
+            execute_external(&tokens, PipeOpts::default());
+            None
         }
     }
 
     // stdout of commands
-    let e_out = execute_external(tokens_strings, None);
-    return None;
     /* match e_out {
         Some(e) => return Some(e.body),
         None => return None,
