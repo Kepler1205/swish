@@ -1,29 +1,14 @@
 use std::io;
+
 use std::io::Write;
 use std::env;
+use std::path::PathBuf;
 
 mod parser;
 mod builtin;
+mod utils;
 
-// converts /home/user/path to ~/path
-// fn prompt_pwd(dir: String) -> String 
-// {
-//
-//     match env::var("HOME") {
-//         Ok(home) => {
-//
-//         }
-//         Err(err) => {
-//             eprintln!("{}", err);
-//             dir
-//         }
-//     }
-// }
-
-// use std::path::PathBuf;
-
-fn main() 
-{
+fn main() {
     loop {
         let pwd = env::current_dir().expect("Failed to get working directory");
         print!("{} > ", pwd.to_string_lossy().to_string());
