@@ -8,7 +8,8 @@ mod parser;
 mod builtin;
 mod utils;
 
-fn main() {
+// entry point
+fn main() -> io::Result<()> {
     loop {
         let pwd = env::current_dir().expect("Failed to get working directory");
         print!("{} > ", pwd.to_string_lossy().to_string());
@@ -19,11 +20,13 @@ fn main() {
             .read_line(&mut input)
             .expect("Failed to read user input");
 
-        // remove trailing newline
-        if input.ends_with('\n') {
-            input.pop();
-        }
+        if input.trim_end() == String::from("exit") { break; }
+
+        // remove trailing newline for parser
+        if input.ends_with('\n') { input.pop(); }
 
         parser::parse_input(&input);
+
     }
+    Ok(())
 }
