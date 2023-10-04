@@ -1,7 +1,6 @@
 use crate::utils::{Token, TokenType, Type};
 use std::path::PathBuf;
 
-pub static mut CD_HIST: Vec<PathBuf> = Vec::new();
 // list of built-in functions
 const FUNCTIONS: [&str; 3] = ["cd", "if", "pwd"];
 // list of built-in operators
@@ -60,8 +59,16 @@ mod function
         };
     }
 
+    // true or false commands
+    pub fn booleans(input: &str) -> i32 {
+        match input.trim() {
+            "0" | "false" => 0,
+            _ => 1,
+        }
+    } 
+
     // create an integer variable
-    fn int(argv: &Vec<Token>) {
+    pub fn int(argv: &Vec<Token>) {
 
     }
 }
