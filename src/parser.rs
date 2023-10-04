@@ -1,22 +1,7 @@
 use crate::utils::{Token, TokenType};
 
-fn print_tokens(input: &Vec<Token>) {
-    println!("Tokens:");
-    for t in input {
-        match t.kind {
-            TokenType::Quote =>     println!("\ttoken: '{}' \ttype: Quote", t.body),
-            TokenType::Command =>   println!("\ttoken: '{}' \ttype: Command", t.body),
-            TokenType::Subshell =>  println!("\ttoken: '{}' \ttype: Subshell", t.body),
-            TokenType::Block =>     println!("\ttoken: '{}' \ttype: Block", t.body),
-            // _ =>                    println!("\ttoken: '{}' \ttype: Unknown", t.body),
-        }
-    }
-}
-
 fn tokenize(input: &str) -> Option<Vec<Token>> {
     if input.is_empty() {return None}
-
-    println!("Input string: '{}'", input);
 
     let mut tokens: Vec<Token> = Vec::new();
     let mut token = String::new();
@@ -39,17 +24,6 @@ fn tokenize(input: &str) -> Option<Vec<Token>> {
     for (i, c) in input.chars().enumerate() {
         match current_type {
             TokenType::Command => { 
-                // allows for a delimiter at 
-                // the end even if there isn't one
-
-                // if c != ' ' && open_delims.contains(next_char) {
-                //     println!("char {c}");
-                //     token.push(c);
-                //     tokens.push(Token {body: token.clone(), kind: current_type.clone()});
-                //     token.clear();
-                //     continue;
-                // }
-                
                 if close_delims.contains(c) {
                     eprintln!("swish: unexpected '{}', no corresponding delimiter", c);
                     return None;
@@ -57,31 +31,35 @@ fn tokenize(input: &str) -> Option<Vec<Token>> {
 
                 match c {
                     '"' => {
+                        if !token.is_empty() { push_token!(); }
                         current_type = TokenType::Quote;
                         double_quote = true;
                     }
                     '\'' => {
+                        if !token.is_empty() { push_token!(); }
                         current_type = TokenType::Quote;
                         double_quote = false;
                     }
                     '(' => {
-                        if !token.is_empty() {
-                            push_token!();
-                        }
+                        if !token.is_empty() { push_token!(); }
                         current_type = TokenType::Subshell;
                         subshell_depth += 1;
                     }
                     '{' => {
-                        if !token.is_empty() {
-                            push_token!();
-                        }
+                        if !token.is_empty() { push_token!(); }
                         current_type = TokenType::Block;
                         subshell_depth += 1;
                     }
                     ' ' => {
+                        // ignore dupliate spaces
                         if input.chars().nth(i + 1).unwrap_or(' ') != ' ' {
                             push_token!();
                         }
+                    }
+                    '|' => {
+                        // push pipe char as its own argument
+                        push_token!();
+                        tokens.push(Token {body: String::from("|"), kind: TokenType::Command});
                     }
                     _ => {
                         token.push(c);
@@ -150,14 +128,19 @@ fn tokenize(input: &str) -> Option<Vec<Token>> {
 
 // options for piping for stdout
 // used for | or 
-struct PipeOpts {
+struct ExecOpts {
+    stdout: String,
     pipe_stdout: bool,
     pipe_stderr: bool
 }
 
-impl Default for PipeOpts {
+impl Default for ExecOpts {
     fn default () -> Self {
-        PipeOpts { pipe_stdout: false, pipe_stderr: false }
+        ExecOpts { 
+            stdout: String::new(),
+            pipe_stdout: false,
+            pipe_stderr: false 
+        }
     }
 }
 
@@ -172,7 +155,7 @@ impl From<std::io::Error> for ExecutionError {
 }
 
 
-fn execute_external(tokens: &Vec<Token>, p_opts: PipeOpts) -> Result<(), ExecutionError> {
+fn execute_external(tokens: &Vec<Token>, opts: ExecOpts) -> Result<(), ExecutionError> {
     use std::process::{ Command, Stdio };
 
     let argv: Vec<String> = tokens
@@ -185,9 +168,10 @@ fn execute_external(tokens: &Vec<Token>, p_opts: PipeOpts) -> Result<(), Executi
         let mut cmd = Command::new(first);
         cmd.args(args);
 
-        if p_opts.pipe_stdout {
+
+        if opts.pipe_stdout {
             cmd.stdout(Stdio::piped());
-        } else if p_opts.pipe_stderr {
+        } else if opts.pipe_stderr {
             cmd.stderr(Stdio::piped());
         } else {
             cmd.stdout(Stdio::inherit());
@@ -201,7 +185,7 @@ fn execute_external(tokens: &Vec<Token>, p_opts: PipeOpts) -> Result<(), Executi
                 child.wait()?;
                 Ok(())
             }
-            Err(e) => Err(ExecutionError::from(e))
+            Err(_) => Err(ExecutionError::SpawnError)
         }
     } else {
         Err(ExecutionError::MissingArguments)
@@ -211,8 +195,8 @@ fn execute_external(tokens: &Vec<Token>, p_opts: PipeOpts) -> Result<(), Executi
 pub fn parse_input(input: &str) -> Option<String> {
     let mut tokens = tokenize(input).unwrap_or(vec![]);
 
-    // debug
-    print_tokens(&tokens);
+    // DEBUG:
+    println!("{:?}", tokens);
     
     // replace subshell token with the output of the contained commands
     for t in &mut tokens {
@@ -222,7 +206,7 @@ pub fn parse_input(input: &str) -> Option<String> {
             match parse_input(t.body.as_str()) {
                 Some(o) => {
                     t.body = o;
-                    t.kind = TokenType::Quote;
+                    t.kind = TokenType::Quote; // could be Command instead
                 }
                 None => return None
             }
@@ -231,13 +215,12 @@ pub fn parse_input(input: &str) -> Option<String> {
 
     if tokens.is_empty() {return None}
 
-
     let is_builtin = crate::builtin::handle_builtin(&tokens);
 
     return match is_builtin {
         Some(s) => Some(s),
         None => {
-            execute_external(&tokens, PipeOpts::default());
+            execute_external(&tokens, ExecOpts::default());
             None
         }
     }
